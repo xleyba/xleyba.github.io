@@ -1,0 +1,127 @@
+I"�&<p>Luego de mucho tiempo me he decidido a escribir sobre Docker, Kubernetes, etc.</p>
+
+<p>Dado que trabajo sobre macOS, me he encontrado con una serie de dificultades añadidas que he ido resolviendo y apuntando por diferentes lugares hasta que decidí concentrar toda la información en un solo lugar y, al mismo tiempo, hacer pública mi «investigación» ya que podría servir a alguien que este pasando por esa misma etapa.
+<!--end_excerpt-->
+Dado que la información en inglés es abundante, he preferido escribir esto en castellano. 🙂</p>
+
+<p>La idea consiste en crear una mínima aplicación que pueda ser encapsulada en una imagen Docker y luego desplegada en la nube. Para esto, me decidí por usar Go, que no requiere de un máquina virtual (como si ocurre con Java) y por lo tanto permite generar imágenes Docker más pequeñas.</p>
+
+<p>El primer paso es, pues, crear una aplicación en Golang.</p>
+
+<h2 id="aplicación-en-go">Aplicación en Go</h2>
+
+<p>La aplicación en Go será bastante simple ya que la idea no es aprender a programar en Go sino crear una aplicación rápidamente.</p>
+
+<p>La aplicación tiene su propio servidor escuchando en el puerto 8081 (por lo que tampoco necesita un Apache u otro servidor web) y responde a las peticiones http con el mensaje «Hello world»</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="n">main</span>
+
+<span class="k">import</span> <span class="p">(</span>
+        <span class="s">"fmt"</span>
+        <span class="s">"log"</span>
+        <span class="s">"net/http"</span>
+        <span class="s">"strconv"</span>
+        <span class="s">"sync"</span>
+<span class="p">)</span>
+
+<span class="k">var</span> <span class="n">counter</span> <span class="kt">int</span>
+<span class="k">var</span> <span class="n">mutex</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">sync</span><span class="o">.</span><span class="n">Mutex</span><span class="p">{}</span>
+
+<span class="k">func</span> <span class="n">echoString</span><span class="p">(</span><span class="n">w</span> <span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span> <span class="n">r</span> <span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Fprintf</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s">"hello"</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="n">incrementCounter</span><span class="p">(</span><span class="n">w</span> <span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span> <span class="n">r</span> <span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">mutex</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+        <span class="n">counter</span><span class="o">++</span>
+        <span class="n">fmt</span><span class="o">.</span><span class="n">Fprintf</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">strconv</span><span class="o">.</span><span class="n">Itoa</span><span class="p">(</span><span class="n">counter</span><span class="p">))</span>
+        <span class="n">mutex</span><span class="o">.</span><span class="n">Unlock</span><span class="p">()</span>
+<span class="p">}</span>
+
+<span class="k">func</span> <span class="n">main</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">http</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s">"/"</span><span class="p">,</span> <span class="n">echoString</span><span class="p">)</span>
+
+        <span class="n">http</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s">"/increment"</span><span class="p">,</span> <span class="n">incrementCounter</span><span class="p">)</span>
+
+        <span class="n">http</span><span class="o">.</span><span class="n">HandleFunc</span><span class="p">(</span><span class="s">"/hi"</span><span class="p">,</span> <span class="k">func</span><span class="p">(</span><span class="n">w</span> <span class="n">http</span><span class="o">.</span><span class="n">ResponseWriter</span><span class="p">,</span> <span class="n">r</span> <span class="o">*</span><span class="n">http</span><span class="o">.</span><span class="n">Request</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">fmt</span><span class="o">.</span><span class="n">Fprintf</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s">"Hi"</span><span class="p">)</span>
+        <span class="p">})</span>
+
+        <span class="n">log</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="s">"Starting server...."</span><span class="p">)</span>
+
+        <span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">(</span><span class="n">http</span><span class="o">.</span><span class="n">ListenAndServe</span><span class="p">(</span><span class="s">":8081"</span><span class="p">,</span> <span class="no">nil</span><span class="p">))</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="s">"Server started at port 8081"</span><span class="p">)</span>
+
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Una vez hecho esto, procedo a compilar ejecutando go build.
+Allí me dí cuenta de que el código que estaba generando esa compilación (recordemos que Go genera código nativo) era para macOS. Sin embargo, mi plan es desplegar en Docker en una imagen linux por lo que necesito generar código unix.</p>
+
+<h2 id="compilar-para-linux">Compilar para linux</h2>
+<p>Luego de investigar por la red, logré encontrar el comando para compilar para Linux:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">env </span><span class="nv">GOOS</span><span class="o">=</span>linux <span class="nv">GOARCH</span><span class="o">=</span>amd64 go build main.go
+6503338 Feb 22 10:55 main
+</code></pre></div></div>
+
+<p>Ahora, necesito generar la imagen Docker con mi aplicación</p>
+
+<h2 id="crear-dockerfile">Crear Dockerfile</h2>
+
+<p>Para crear la imagen usaré como base iron/go (https://github.com/iron-io/dockers/tree/master/go) que es básicamente una versión Alpine preparada para correr aplicaciones desarrolladas en Golang.</p>
+
+<p>Para ello, crearé un fichero llamado Dockerfile con el siguiente contenido:</p>
+
+<div class="language-yaml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="s">FROM iron/go</span>
+<span class="s">WORKDIR /app</span>
+<span class="s">ADD main /app/.</span>
+<span class="c1"># Launch it</span>
+<span class="s">ENTRYPOINT ["./main"]</span>
+</code></pre></div></div>
+
+<p>El fichero indica cual es la imagen que usaremos como base, cuál es el directorio de trabajo dentro de la imagen Docker, copiará a mi programa main a la carpeta app e indicará cuál es la aplicación que debe ejecutarse cuando alguien ejecute la imagen Docker.</p>
+
+<p>Crear imagen Docker
+Teniendo ya todo listo solo resta crear la imagen Docker.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Javiers-MacBook-Air:src jleyba<span class="nv">$ </span>docker build <span class="nt">-t</span> antonof/gotest <span class="nb">.</span>
+Sending build context to Docker daemon  6.515MB
+Step 1/4 : FROM iron/go
+ <span class="nt">---</span><span class="o">&gt;</span> ed7df0451f6c
+Step 2/4 : WORKDIR /app
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> 5cacdfc74a97
+Step 3/4 : ADD main /app/.
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> 112ebd6ce76a
+Step 4/4 : ENTRYPOINT <span class="o">[</span><span class="s2">"./main"</span><span class="o">]</span>
+ <span class="nt">---</span><span class="o">&gt;</span> Using cache
+ <span class="nt">---</span><span class="o">&gt;</span> d3b5b2e00d85
+Successfully built d3b5b2e00d85
+Successfully tagged antonof/gotest:latest
+</code></pre></div></div>
+
+<p>Aparentemente, la imagen ha sido creada pero solo nos rendiremos ante la evidencia de ver correr nuestra aplicación  🙂</p>
+
+<h2 id="ejecutar-aplicación-en-docker">Ejecutar aplicación en Docker</h2>
+
+<p>Para ejecutar la aplicación dentro del docker:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Javiers-MacBook-Air:src jleyba<span class="nv">$ </span>docker run <span class="nt">-p</span> 8081:8081 antonof/gotest
+2019/02/22 10:09:13 Starting server....
+</code></pre></div></div>
+
+<p>Dado que parece que se ha ejecutado correctamente, vamos a probar usando un browser:</p>
+
+<p>Como podemos ver, la aplicación ha respondido de acuerdo a lo esperado y solo nos resta subir nuestra imagen a un repositorio Docker.</p>
+
+<p>Subir el docker al repo
+Para subir nuestra imagen usaremos el comando:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>docker push hub-user/repo-name:tag
+</code></pre></div></div>
+
+<p>Ya tenemos todo listo y ahora pasaremos a ver como instalar Kubernetes en el siguiente artículo.</p>
+
+:ET

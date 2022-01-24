@@ -1,0 +1,44 @@
+I"Z	<p>Uno de los problemas que me he encontrado con Rust (a diferencia de lo que ocurre con Go) es la generación de un ejecutable para un OS diferente al del equipo donde se esta desarrollando.</p>
+
+<p>Recopilando información de varias fuentes he logrado hacerlo así:</p>
+
+<!--end_excerpt-->
+<h2 id="paso-1">Paso 1</h2>
+
+<p>En la carpeta del proyecto crear dir .cargo</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">mkdir</span> .cargo
+</code></pre></div></div>
+
+<h2 id="paso-2">Paso 2</h2>
+
+<p>Crear un fichero config en .cargo y agregarlo datos para el linker que corresponda al target elegido.</p>
+
+<div class="language-toml highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nn">[target.x86_64-unknown-linux-musl]</span>
+<span class="py">linker</span> <span class="p">=</span> <span class="s">"x86_64-linux-musl-gcc"</span>
+</code></pre></div></div>
+
+<p>Luego, si miramos en la estructura de nuestro proyecto, veremos que en target nos faltan los archivos del que queremos generar. Por eso, debemos agregar dicho target para permitir la compilación.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rustup target add x86_64-unknown-linux-musl
+</code></pre></div></div>
+
+<p>Para este target deberemos instalar su linker</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>brew <span class="nb">install </span>filosottile/musl-cross/musl-cross
+</code></pre></div></div>
+
+<p>Luego ya estamos listos para generar la aplicación aunque hay que pasar una variable de entorno para que el proceso pueda encontrar el linker (al menos en macOS)</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nv">CROSS_COMPILE</span><span class="o">=</span>x86_64-linux-musl cargo build <span class="nt">--release</span> <span class="nt">--target</span><span class="o">=</span>x86_64-unknown-linux-musl
+</code></pre></div></div>
+
+<p>Cuando termine el proceso, encontraremos nuestro ejecutable en:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>target
+  └── x86_64-unknown-linux-musl
+                               └── release
+</code></pre></div></div>
+
+<p>Y listo. 🙂</p>
+:ET

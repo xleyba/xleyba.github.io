@@ -1,0 +1,136 @@
+I"�9<p>RPC (gRPC Remote Procedure Calls) es la implementación de código abierto de «remote procedure call (RPC)» desarrollado por Google. gRPC utiliza HTTP/2 como capa de transporte y Protocol Buffers como interface, y provee funcionalidades como authentication, bidirectional streaming y flow control, blocking or nonblocking bindings, and cancellation and timeouts.</p>
+
+<!--end_excerpt-->
+
+<p>En estos momentos es lo que más se esta usando para desarrollar micro servicios especialmente en casos donde hay alto volumen de tráfico de demanda.</p>
+
+<p>Si bien sus ventajas son claras, el desarrollo de un sistema que use gRPC es bastante diferente de la forma habitual de desarrollar en cualquier lenguaje.</p>
+
+<p>La base de todo el desarrollo es un fichero que define las interfaces de los servicios que iremos a desarrollar, el fichero «.proto». Veamos un ejemplo:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">syntax</span> <span class="o">=</span> <span class="s">"proto3"</span><span class="p">;</span>
+
+<span class="n">option</span> <span class="n">go_package</span> <span class="o">=</span> <span class="s">"calculatorservicemodel"</span><span class="p">;</span>
+
+<span class="k">package</span> <span class="n">calculatorservicemodel</span><span class="p">;</span>
+
+
+<span class="n">service</span> <span class="n">CalculatorService</span> <span class="p">{</span>
+    <span class="n">rpc</span> <span class="n">echo</span><span class="p">(</span><span class="n">EchoRequest</span><span class="p">)</span> <span class="n">returns</span><span class="p">(</span><span class="n">EchoResponse</span><span class="p">);</span>
+    <span class="n">rpc</span> <span class="n">factorialIterative</span><span class="p">(</span><span class="n">FactorialRequest</span><span class="p">)</span> <span class="n">returns</span> <span class="p">(</span><span class="n">FactorialResponse</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="n">message</span> <span class="n">EchoRequest</span> <span class="p">{</span>
+    <span class="kt">string</span> <span class="n">message</span> <span class="o">=</span> <span class="m">1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">message</span> <span class="n">EchoResponse</span> <span class="p">{</span>
+    <span class="kt">string</span> <span class="n">message</span> <span class="o">=</span> <span class="m">1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">message</span> <span class="n">FactorialRequest</span> <span class="p">{</span>
+    <span class="kt">int32</span> <span class="n">number</span> <span class="o">=</span> <span class="m">1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="n">message</span> <span class="n">FactorialResponse</span> <span class="p">{</span>
+    <span class="n">bytes</span> <span class="n">factorial</span> <span class="o">=</span> <span class="m">1</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Como podemos ver, estamos definiendo mediante el modelo «proto3» a un servicio Calculator que cuenta con dos operaciones: echo y Factorial y los parámetros que recibirán dichas operaciones.</p>
+
+<p>A ese fichero hay que procesarlo mediante el software protoc para generar el fichero Go que usaremos en nuestra aplicación. Para ello ejecutaremos el siguiente comando:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>protoc <span class="nt">-I</span> calculatorservicemodel/ calculatorservicemodel/calculator_service_model.proto <span class="nt">--go_out</span><span class="o">=</span><span class="nv">plugins</span><span class="o">=</span>grpc:calculatorservicemodel 
+</code></pre></div></div>
+
+<p>Este comando nos terminará generando un fichero calculator_service_model.pb.go que contendrá la definición de protocol buffers para nuestro servicio junto con la definición de las interfaces que iremos a implementar.</p>
+
+<p>A partir de allí, podemos crear el servicio calculator, que funcionará como servidor. Creamos un nuevo proyecto calculator y un fichero main.</p>
+
+<p>Dentro de main importaremos el fichero .pb.go que creamos en el paso anterior.</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="p">(</span>
+	<span class="n">pb</span> <span class="s">"bitbucket.com/go/calculatorservicemodel"</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>Luego, podemos observar que en el fichero pb.go tenemos definida la siguiente interface:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">type</span> <span class="n">CalculatorServiceServer</span> <span class="k">interface</span> <span class="p">{</span>
+	<span class="n">Echo</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">Context</span><span class="p">,</span> <span class="o">*</span><span class="n">EchoRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="n">EchoResponse</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
+	<span class="n">FactorialIterative</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">Context</span><span class="p">,</span> <span class="o">*</span><span class="n">FactorialRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="n">FactorialResponse</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>La utilizaremos entonces en nuestro main.go definiendo un nuevo tipo:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">// Implements interface</span>
+<span class="k">type</span> <span class="n">CalculatorServiceServer</span> <span class="k">struct</span> <span class="p">{</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Luego vemos que en el fichero .pb.go tenemos definido el servicio así:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">func</span> <span class="p">(</span><span class="o">*</span><span class="n">UnimplementedCalculatorServiceServer</span><span class="p">)</span> <span class="n">Echo</span><span class="p">(</span><span class="n">ctx</span> <span class="n">context</span><span class="o">.</span><span class="n">Context</span><span class="p">,</span> <span class="n">req</span> <span class="o">*</span><span class="n">EchoRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="n">EchoResponse</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+	<span class="k">return</span> <span class="no">nil</span><span class="p">,</span> <span class="n">status</span><span class="o">.</span><span class="n">Errorf</span><span class="p">(</span><span class="n">codes</span><span class="o">.</span><span class="n">Unimplemented</span><span class="p">,</span> <span class="s">"method Echo not implemented"</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Por lo que nuestra implementación en main.go debería ser así:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c">// Echo service impl.</span>
+<span class="k">func</span> <span class="p">(</span><span class="o">*</span><span class="n">CalculatorServiceServer</span><span class="p">)</span> <span class="n">Echo</span><span class="p">(</span><span class="n">ctx</span> <span class="n">context</span><span class="o">.</span><span class="n">Context</span><span class="p">,</span> <span class="n">in</span> <span class="o">*</span><span class="n">pb</span><span class="o">.</span><span class="n">EchoRequest</span><span class="p">)</span> <span class="p">(</span><span class="o">*</span><span class="n">pb</span><span class="o">.</span><span class="n">EchoResponse</span><span class="p">,</span> <span class="kt">error</span><span class="p">)</span> <span class="p">{</span>
+	<span class="k">return</span> <span class="o">&amp;</span><span class="n">pb</span><span class="o">.</span><span class="n">EchoResponse</span><span class="p">{</span><span class="n">Message</span><span class="o">:</span> <span class="n">in</span><span class="o">.</span><span class="n">Message</span><span class="p">},</span> <span class="no">nil</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Teniendo definida la operación, podemos definir el server que brinde el servicio:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">fmt</span><span class="o">.</span><span class="n">Println</span><span class="p">(</span><span class="s">"Started server..."</span><span class="p">)</span>
+	<span class="n">lis</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">net</span><span class="o">.</span><span class="n">Listen</span><span class="p">(</span><span class="s">"tcp"</span><span class="p">,</span> <span class="n">viper</span><span class="o">.</span><span class="n">GetString</span><span class="p">(</span><span class="s">"port"</span><span class="p">))</span>
+	<span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+		<span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">()</span><span class="o">.</span><span class="n">Msgf</span><span class="p">(</span><span class="s">"failed to listen: %v"</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+	<span class="p">}</span>
+	<span class="c">// Creates a new gRPC server</span>
+	<span class="n">s</span> <span class="o">:=</span> <span class="n">grpc</span><span class="o">.</span><span class="n">NewServer</span><span class="p">()</span>
+	<span class="n">pb</span><span class="o">.</span><span class="n">RegisterCalculatorServiceServer</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">CalculatorServiceServer</span><span class="p">{})</span>
+	<span class="n">s</span><span class="o">.</span><span class="n">Serve</span><span class="p">(</span><span class="n">lis</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Ahora faltaría definir un cliente. Dentro del cliente la situación análoga.</p>
+
+<p>Nuevamente importaremos nuestro modelo de protocol buffers:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">import</span> <span class="p">(</span>
+	<span class="n">pb</span> <span class="s">"bitbucket.com/go/calculatorservicemodel"</span>
+<span class="p">)</span>
+</code></pre></div></div>
+
+<p>Y entonces dentro del código definimos el cliente:</p>
+
+<div class="language-go highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">conn</span><span class="p">,</span> <span class="n">err</span> <span class="o">:=</span> <span class="n">grpc</span><span class="o">.</span><span class="n">Dial</span><span class="p">(</span><span class="n">viper</span><span class="o">.</span><span class="n">GetString</span><span class="p">(</span><span class="s">"calledServiceURL"</span><span class="p">),</span> <span class="n">grpc</span><span class="o">.</span><span class="n">WithInsecure</span><span class="p">())</span>
+	<span class="k">if</span> <span class="n">err</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+		<span class="n">log</span><span class="o">.</span><span class="n">Fatal</span><span class="p">()</span><span class="o">.</span><span class="n">Msgf</span><span class="p">(</span><span class="s">"did not connect: %v"</span><span class="p">,</span> <span class="n">err</span><span class="o">.</span><span class="n">Error</span><span class="p">())</span>
+		<span class="n">os</span><span class="o">.</span><span class="n">Exit</span><span class="p">(</span><span class="m">1</span><span class="p">)</span>
+	<span class="p">}</span>
+
+		<span class="n">sc</span> <span class="o">:=</span> <span class="n">pb</span><span class="o">.</span><span class="n">NewCalculatorServiceClient</span><span class="p">(</span><span class="n">conn</span><span class="p">)</span>
+
+		<span class="n">msg</span> <span class="o">:=</span> <span class="o">&amp;</span><span class="n">pb</span><span class="o">.</span><span class="n">EchoRequest</span><span class="p">{</span>
+			<span class="n">Message</span><span class="o">:</span> <span class="n">params</span><span class="p">[</span><span class="s">"message"</span><span class="p">],</span>
+		<span class="p">}</span>
+
+		<span class="n">resp</span><span class="p">,</span> <span class="kt">error</span> <span class="o">:=</span> <span class="n">sc</span><span class="o">.</span><span class="n">Echo</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">Background</span><span class="p">(),</span> <span class="n">msg</span><span class="p">)</span>
+		<span class="k">if</span> <span class="kt">error</span> <span class="o">!=</span> <span class="no">nil</span> <span class="p">{</span>
+			<span class="n">log</span><span class="o">.</span><span class="n">Error</span><span class="p">()</span><span class="o">.</span><span class="n">Msgf</span><span class="p">(</span><span class="s">"Error: "</span><span class="p">,</span> <span class="kt">error</span><span class="o">.</span><span class="n">Error</span><span class="p">())</span>
+			<span class="n">fmt</span><span class="o">.</span><span class="n">Fprintf</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s">"%s"</span><span class="p">,</span> <span class="kt">error</span><span class="o">.</span><span class="n">Error</span><span class="p">())</span>
+			<span class="k">return</span>
+		<span class="p">}</span>
+
+		<span class="n">fmt</span><span class="o">.</span><span class="n">Fprintf</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s">"%s"</span><span class="p">,</span> <span class="n">resp</span><span class="o">.</span><span class="n">Message</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>Y listo, ya tenemos un cliente listo para interactuar con nuestro server.</p>
+
+:ET

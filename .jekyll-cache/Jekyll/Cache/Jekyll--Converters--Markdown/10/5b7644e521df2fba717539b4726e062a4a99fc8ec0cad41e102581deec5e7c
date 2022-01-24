@@ -1,0 +1,2 @@
+I"t<p>RPC (gRPC Remote Procedure Calls) es la implementación de código abierto de «remote procedure call (RPC)» desarrollado por Google. gRPC utiliza HTTP/2 como capa de transporte y Protocol Buffers como interface, y provee funcionalidades como authentication, bidirectional streaming y flow control, blocking or nonblocking bindings, and cancellation and timeouts.</p>
+:ET

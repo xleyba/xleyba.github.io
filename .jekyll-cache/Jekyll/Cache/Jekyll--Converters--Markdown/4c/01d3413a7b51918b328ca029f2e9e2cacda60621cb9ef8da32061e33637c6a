@@ -1,0 +1,177 @@
+I"r*
+<hr />
+<p>layout: post
+title: Go, Docker y Kubernetes en macOS (II)
+—</p>
+
+<h2 id="elegir-versión-de-kubernetes">Elegir versión de Kubernetes</h2>
+<p>Al momento de intentar usar Kubernetes en nuestro Mac descubrimos que solo corre en Linux, por lo que deberemos usar una máquina virtual.</p>
+
+<p>Dado que mi máquina (Macbook Air de 11″) no es una oda a la abundancia de recursos (aunque excelente para quien tiene que viajar frecuentemente y necesita un equipo liviano), debía buscar una opción liviana tanto de VM como de Kubernetes. Luego de leer y buscar por la red, encontré que la combinación «perfecta» (si es que algo así existe) es MicroK8s corriendo sobre Multipass.
+<!--end_excerpt-->
+Multipass es una versión de Linux virtualizada creada por Canonical que puede ser descargada desde aqui:  https://github.com/CanonicalLtd/multipass/releases</p>
+
+<p>La instalación es simple, solo hay que seguir las instrucciones del pkg.
+Una vez instalada, ejecutaremos multipass indicándole que instale MicroK8s.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass launch <span class="nt">--name</span> microk8s-vm <span class="nt">--mem</span> 4G <span class="nt">--disk</span> 40G
+</code></pre></div></div>
+
+<p>Luego instalamos microK8s</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> <span class="nb">sudo </span>snap <span class="nb">install </span>microk8s <span class="nt">--classic</span>
+</code></pre></div></div>
+
+<p>Luego definimos un forwarding para poder comunicarnos desde el exterior de la vm con todo lo que haya dentro.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> <span class="nb">sudo </span>iptables <span class="nt">-P</span> FORWARD ACCEPT
+</code></pre></div></div>
+
+<p>Luego ejecutamos el comando list para verificar que la vm este corriendo.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Javiers-MacBook-Air:src jleyba<span class="nv">$ </span>multipass list
+Name                    State             IPv4             Release
+microk8s-vm             RUNNING           192.168.64.2     Ubuntu 18.04 LTS
+Javiers-MacBook-Air:src jleyba<span class="err">$</span>
+</code></pre></div></div>
+
+<p>En este punto es saludable tomar nota de la ip que aparece en la lista ya que es la que usaremos para nuestras pruebas.</p>
+
+<p>Luego ejecutaremos el siguiente comando para habilitar el servicio de dns, registry y de dashboard.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.enable dns dashboard registry
+</code></pre></div></div>
+
+<p>Un comando útil es el que nos da las direcciones de los servicios del cluster con sus ip:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Javiers-MacBook-Air:src jleyba<span class="nv">$ </span>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl cluster-info
+Kubernetes master is running at http://127.0.0.1:8080
+Heapster is running at http://127.0.0.1:8080/api/v1/namespaces/kube-system/services/heapster/proxy
+KubeDNS is running at http://127.0.0.1:8080/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Grafana is running at http://127.0.0.1:8080/api/v1/namespaces/kube-system/services/monitoring-grafana/proxy
+InfluxDB is running at http://127.0.0.1:8080/api/v1/namespaces/kube-system/services/monitoring-influxdb:http/proxy
+</code></pre></div></div>
+
+<p>En caso de necesidad, podemos abrir un proxy para acceder a nuestra aplicación.</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl proxy <span class="nt">--address</span><span class="o">=</span><span class="s1">'0.0.0.0'</span> <span class="nt">--accept-hosts</span><span class="o">=</span><span class="s1">'.*'</span>
+Starting to serve on <span class="o">[</span>::]:8001
+</code></pre></div></div>
+
+<p>En nuestro caso no es necesario ya que, para nuestra aplicación, habilitaremos un «service» del tipo load balancer que se encargará de balancear sobre todas las instancias de nuestra aplicación.</p>
+
+<p>Ahora podremos usar el browser para, por ejemplo, acceder a Grafana y asi verificar que nuestra instalación de multipass + MicroK8s esta funcionando y accesible desde macOS. Para ello le pasaré a mi browser la siguiente url: http://192.168.64.2:8080/api/v1/namespaces/kube-system/services/monitoring-grafana/proxy/?orgId=1</p>
+
+<p>Como se puede ver en la imagen, hemos podido acceder a Grafana sin problemas.</p>
+
+<p>Para desplegar y generar el servicio hago:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c"># gotest.yaml</span>
+<span class="c"># gotest.yaml</span>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gotest
+  labels:
+    app: gotest
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: gotest
+  template:
+    metadata:
+      labels:
+        app: gotest
+    spec:
+      containers:
+      - name: gotest
+        image: antonof/gotest
+        ports:
+        - containerPort: 8081
+        imagePullPolicy: Always
+<span class="c">##</span>
+<span class="nt">---</span>
+kind: Service
+apiVersion: v1
+metadata:
+  name: gotest-service
+  labels:
+    app: gotest
+spec:
+  selector:
+    app: gotest
+  ports:
+  - name: http
+    port: 8081
+    protocol: TCP
+  <span class="nb">type</span>: LoadBalancer
+</code></pre></div></div>
+
+<p>Como se puede ver en ese fichero hay dos partes. La primera se refiere al deployment y la otra al servicio.
+Es importante destaca los labels ya que Kubernetes los usa para identificar a nuestra aplicación. Si miran bien, nuestra aplicacion tiene el label «gotest» y abajo el servicio tiene un selector con el label «app=gotest» eso quiere decir que el servicio balanceará todas las instancias de los pods que tengan el label «app=gotest».</p>
+
+<p>También hay que destacar que el servicio de tipo «LoadBalancer» utiliza el protocolo SCTP por lo que no funcionará en soluciones Cloud que no soporten a dicho protocolo.</p>
+
+<p>Antes de comenzar con el despliegue, podemos verificar que todo esta funcionando entrando al dashboard de Kubernetes en
+la url http://ip de la vm/api/v1/namespaces/kube-system/services/https:kubernetes-dashboard:/proxy/</p>
+
+<p>Si queremos ver todos los servicios desplegados y sus urls podemos hacer</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl get all <span class="nt">--all-namespaces</span>
+</code></pre></div></div>
+
+<p>Ahora que ya tenemos todo listo podemos desplegar nuestra aplicación. Se puede hacer de forma manual, con el siguiente comando</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl run gotest <span class="nt">--image</span><span class="o">=</span>antonof/gotest <span class="nt">--replicas</span><span class="o">=</span>1 <span class="nt">--port</span><span class="o">=</span>8081
+</code></pre></div></div>
+
+<p>Y luego crear el servicio también de forma manual con</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl expose deployment.apps/gotest <span class="nt">-n</span> default <span class="nt">--type</span><span class="o">=</span>LoadBalancer
+</code></pre></div></div>
+
+<p>O también se puede crear todo junto utilizando el fichero yaml que hemos creado.
+El problema aquí es que kube8s esta dentro de la vm por lo que hay que poner el fichero allí. Para hacer eso podemos abrir una consola dentro de la vm asi:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass shell microk8s-vm
+</code></pre></div></div>
+
+<p>Y una vez dentro podemos abrir vim y copiar allí el contenido del yaml salvandolo como gotest.yaml</p>
+
+<p>Luego entonces podemos ejecutar:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl create <span class="nt">-f</span> gotest.yaml
+</code></pre></div></div>
+
+<p>Para ver si el servicio se esta ejecutando, podemos usar la consola de Kubernetes descripta más arriba o el siguiente comando</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl get pods
+</code></pre></div></div>
+
+<p>Y para ver el servicio</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl get svc
+NAME         TYPE           CLUSTER-IP      EXTERNAL-IP   PORT<span class="o">(</span>S<span class="o">)</span>          AGE
+
+gotest       LoadBalancer   10.152.183.80        8081:30988/TCP   49s
+
+kubernetes   ClusterIP      10.152.183.1            443/TCP          24m
+</code></pre></div></div>
+
+<p>Nuestra aplicación estará disponible en el puerto del servicio que se muestra arriba (y este balanceará entre las instancias).
+probar en el browser (sin haber creado proxy).</p>
+
+<p>http://192.168.64.2:30988/</p>
+
+<p>Y para detener tanto servicio como pods</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl delete <span class="nt">-f</span> gotest.yaml
+</code></pre></div></div>
+
+<p>Para escalar los pods usamos el nombre que aparece cuando ejecutamos get all –all-namespaces</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>multipass <span class="nb">exec </span>microk8s-vm <span class="nt">--</span> /snap/bin/microk8s.kubectl scale <span class="nt">--replicas</span><span class="o">=</span>1 deployment.apps/gotest
+</code></pre></div></div>
+
+:ET
